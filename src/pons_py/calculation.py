@@ -80,7 +80,7 @@ class Calculation:
         return final_sil
         # takes 1d or 2d data and group column, returning a dictionary of silhouette scores for each group.
 
-    def overlap(self, col_1d, group_column, subset=None, plot=False, cmap=None, plot_kwargs=None):
+    def overlap(data, col_1d, group_column, subset=None, plot=False, cmap=None, plot_kwargs=None, bw_method='ISJ'):
         """
         Calculate the overlap of groups in a 1d Speaker Landscape. This is normalised by the proportion of the data they occupy. If a subset is provided, then it will be their proportion of the subset (not the entire dataset). You can choose which groups using the subset (list) parameter. You can also plot them using the plot parameter. Missing values will be removed from the calculation. 
         Note: Due to the behaviour of Matplotlib, if you are running this from a Python script (rather than a Jupyter Notebook), the function will not return the results UNTIL you close the plot window. This is a limitation of Matplotlib.
@@ -100,7 +100,6 @@ class Calculation:
 
 
         # Define a function for KDE with Sheather-Jones bandwidth using KDEpy
-        data = self.data
         def kde(data, x_grid, bw='ISJ'):
             kde = FFTKDE(bw=bw).fit(data.values).evaluate(x_grid)
             return kde
@@ -144,7 +143,7 @@ class Calculation:
         if subset[col_1d].isna().sum() > 0 or subset[group_column].isna().sum() > 0:
             print('WARNING: There are missing values in the data. They will removed to allow the calculation to proceed (this will not affect the original dataset).')
             subset = subset.dropna(subset=[col_1d, group_column])
-        # print(locals())
+            
         # Determine the number of groups
         n_groups = len(subset[group_column].unique())
         print(f'Number of groups: {n_groups}')
@@ -167,7 +166,10 @@ class Calculation:
             try:
                 for cluster in subset[group_column].unique():
                     cluster_data = subset[subset[group_column] == cluster][col_1d]
-                    kde_data = kde(cluster_data, x_grid, bw='ISJ')
+                    kde_data = kde(cluster_data, x_grid, bw=bw_method)
+                    # Make data proportional to subset size
+                    proportion = len(cluster_data) / len(subset)
+                    kde_data *= proportion
                     densities[cluster] = kde_data
                 break
                 
@@ -185,20 +187,13 @@ class Calculation:
                 min_val -= increment
                 x_grid = np.linspace(min_val, max_val, 100000)
 
-
-        total_density = sum(densities.values())
-        for cluster in densities:
-            densities[cluster] /= np.trapz(total_density, x_grid)
-
         density_functions = [color for color in densities.keys()]
 
-        overlap = calculate_weighted_overlap(density_functions, x_grid)
+        new_overlap = calculate_weighted_overlap(density_functions, x_grid)
 
-        if plot:
-            Visualisation().overlap(densities=densities, x_grid=x_grid, cmap=cmap, plot_kwargs=plot_kwargs)
-        
-        return overlap
+        return new_overlap
 
+    
     def sl_measures(self, col_1d, group_column, subset=None, plot=False, cmap=None, plot_kwargs=None):
         """
         Calculates polarisation measures in the Speaker Landscape. Only accepts 1d landscapes (even for silhouettes, if you want 2d silhouettes, call the silhouette method directly). Plotting of the silhouette and overlap is possible here, however it only works in Jupyter Notebooks (.ipynb files or Google Colab), in a standard Python script, it will return the measures only after you close the plot windows (this is due to matplotlib limitations).
